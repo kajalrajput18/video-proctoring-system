@@ -6,7 +6,6 @@ An AI-powered real-time video proctoring system that monitors candidates during 
   
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://video-proctoring-frontend-6g08broai.vercel.app)
 [![Backend API](https://img.shields.io/badge/api-live-blue)](https://video-proctoring-backend-hu6b.onrender.com/health)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 </div>
 
