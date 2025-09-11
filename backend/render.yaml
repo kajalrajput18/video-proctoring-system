@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: video-proctoring-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
