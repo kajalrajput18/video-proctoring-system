@@ -135,6 +135,16 @@ npm start
 
 *Comprehensive PDF reports, CSV data export, integrity score visualization, and detailed event timeline*
 
+📄 PDF Report Sample
+<img src="screenshot/pdf-report-sample.png" alt="PDF Report Sample" width="600"/>
+
+Generated PDF report showing session summary, integrity score, violation details, and timeline analysis
+
+📊 CSV Data Export
+<img src="screenshot/csv-export-sample.png" alt="CSV Export Sample" width="600"/>
+
+CSV file format showing structured data export with timestamps, event types, and violation records for further analysis
+
 </div>
 
 ## 🎮 Usage
