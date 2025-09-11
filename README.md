@@ -4,7 +4,7 @@ An AI-powered real-time video proctoring system that monitors candidates during 
 
 <div align="center">
   
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://video-proctoring-frontend-lrxjayfbt.vercel.app)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://video-proctoring-frontend-6g08broai.vercel.app)
 [![Backend API](https://img.shields.io/badge/api-live-blue)](https://video-proctoring-backend-hu6b.onrender.com/health)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -12,7 +12,7 @@ An AI-powered real-time video proctoring system that monitors candidates during 
 
 ## 🌐 Live Demo
 
-- **Frontend Application**: [https://video-proctoring-frontend-lrxjayfbt.vercel.app](https://video-proctoring-frontend-lrxjayfbt.vercel.app)
+- **Frontend Application**: [https://video-proctoring-frontend-lrxjayfbt.vercel.app](https://video-proctoring-frontend-6g08broai.vercel.app)
 - **Backend API**: [https://video-proctoring-backend-hu6b.onrender.com](https://video-proctoring-backend-hu6b.onrender.com)
 - **API Health Check**: [https://video-proctoring-backend-hu6b.onrender.com/health](https://video-proctoring-backend-hu6b.onrender.com/health)
 
