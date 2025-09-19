@@ -33,6 +33,66 @@ This project allows online exam monitoring with real-time video streaming, face/
 
 ---
 
+## ⚙️ Installation & Setup
+**1️⃣ Clone Repo**
+git clone https://github.com/your-username/video-proctoring-system.git
+cd video-proctoring-system
+
+**2️⃣ Install Dependencies**
+Frontend
+cd client
+npm install
+
+Backend
+cd server
+npm install
+
+**3️⃣ Setup Environment Variables**
+
+Create a .env file inside client/
+
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-app.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-app.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
+
+
+Create a .env file inside server/
+
+PORT=5000
+MONGO_URI=your-mongo-db-uri
+JWT_SECRET=your-secret-key
+
+**4️⃣ Run the App**
+Start Backend
+cd server
+npm start
+
+Start Frontend
+cd client
+npm run dev
+
+
+### 🎯 Future Enhancements
+
+🔍 AI-powered face recognition
+
+📊 Analytics dashboard for violations
+
+📡 Cloud storage for exam recordings
+
+🤖 Auto-detection of multiple devices
+
+
+📜 License
+
+This project is licensed under the MIT License – free to use and modify.
+
+👩‍💻 Built with ❤️ by Kajal
+
+
 ## 📂 Folder Structure  
 
 ```bash
@@ -54,3 +114,7 @@ video-proctoring-system/
 │
 │── README.md
 │── package.json
+
+
+
+
