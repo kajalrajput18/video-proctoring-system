@@ -1,267 +1,265 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import Webcam from 'react-webcam';
-import { FaceDetection } from '../services/detection';
-import { startSession, endSession, logEvent } from '../services/api';
-import io from 'socket.io-client';
+import * as faceDetection from '@mediapipe/face_detection';
+import * as tf from '@tensorflow/tfjs';
+import * as cocoSsd from '@tensorflow-models/coco-ssd';
 
-const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000');
+async function setupTf() {
+  await tf.ready();
+  await tf.setBackend('webgl');
+}
 
-const VideoCapture = ({ candidateName, onSessionCreated, sessionId: propSessionId }) => {
-  const webcamRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const [sessionId, setSessionId] = useState(propSessionId);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedChunks, setRecordedChunks] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [stats, setStats] = useState({
-    focusLostCount: 0,
-    suspiciousEvents: 0
-  });
-  const [detectionStarted, setDetectionStarted] = useState(false);
-  const [cameraError, setCameraError] = useState(false);
+export class FaceDetection {
+  constructor(videoElement, onDetectionCallback) {
+    this.videoElement = videoElement;
+    this.onDetectionCallback = onDetectionCallback;
+    this.isRunning = false;
+    
+    // Timers for detection
+    this.noFaceStartTime = null;
+    this.lookingAwayStartTime = null;
+    this.headTurnStartTime = null;
+    
+    // Models
+    this.objectModel = null;
+    this.faceDetector = null;
+    
+    // Flags
+    this.initialized = false;
+    this.objectInterval = null;
+    this.faceDetectionInterval = null;
+  }
 
-  const faceDetectionRef = useRef(null);
-
-  useEffect(() => {
-    if (candidateName && !sessionId) {
-      initializeSession();
-    }
-
-    return () => {
-      if (faceDetectionRef.current) {
-        faceDetectionRef.current.stop();
-      }
-    };
-  }, [candidateName]);
-
-  const initializeSession = async () => {
+  async start() {
     try {
-      const response = await startSession(candidateName);
-      const newSessionId = response.sessionId;
-      setSessionId(newSessionId);
-      onSessionCreated(newSessionId);
+      await setupTf();
+      this.isRunning = true;
+
+      // Initialize MediaPipe Face Detection
+      this.faceDetector = new faceDetection.FaceDetection({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+        }
+      });
+      
+      this.faceDetector.setOptions({
+        model: 'short',
+        minDetectionConfidence: 0.5
+      });
+      
+      this.faceDetector.onResults(this.handleFaceResults.bind(this));
+
+      // Initialize Object Detection model
+      console.log('Loading object detection model...');
+      this.objectModel = await cocoSsd.load();
+      console.log('Object detection model loaded');
+
+      // Start both detectors
+      this.startObjectDetection();
+      this.startFaceDetection();
+      
+      this.initialized = true;
+      console.log('Detection system started successfully');
     } catch (error) {
-      console.error('Failed to start session:', error);
-      alert('Failed to start session. Please check if the backend is running.');
+      console.error('Error initializing detection:', error);
     }
-  };
+  }
 
-  const startDetection = useCallback(() => {
-    if (webcamRef.current && webcamRef.current.video && !detectionStarted) {
-      console.log('Starting detection...');
-      setDetectionStarted(true);
-      setCameraError(false);
-      
-      faceDetectionRef.current = new FaceDetection(
-        webcamRef.current.video,
-        handleDetectionEvent
-      );
-      
-      setTimeout(() => {
-        faceDetectionRef.current.start().catch(console.error);
-      }, 1000);
-    }
-  }, [detectionStarted]);
+  startObjectDetection() {
+    // Object detection every 2 seconds
+    this.objectInterval = setInterval(() => {
+      this.detectObjects();
+    }, 2000);
+  }
 
-  const handleDetectionEvent = useCallback(async (event) => {
-    const newAlert = {
-      id: Date.now(),
-      ...event,
-      timestamp: new Date().toLocaleTimeString()
-    };
-    
-    setAlerts(prev => [newAlert, ...prev].slice(0, 10));
-    
-    if (event.type === 'focus_lost' || event.type === 'looking_away') {
-      setStats(prev => ({ ...prev, focusLostCount: prev.focusLostCount + 1 }));
+  startFaceDetection() {
+    // Face detection every 1 second
+    this.faceDetectionInterval = setInterval(() => {
+      if (this.videoElement && this.videoElement.videoWidth > 0) {
+        this.faceDetector.send({ image: this.videoElement });
+      }
+    }, 1000);
+  }
+
+  // ✅ 1. Detect if no face is present for >10 sec
+  handleFaceResults(results) {
+    if (!results.detections || !this.isRunning) return;
+
+    if (results.detections.length === 0) {
+      this.handleNoFace();
     } else {
-      setStats(prev => ({ ...prev, suspiciousEvents: prev.suspiciousEvents + 1 }));
+      this.handleFacesDetected(results.detections);
     }
+  }
 
-    if (sessionId) {
-      try {
-        await logEvent({
-          sessionId,
-          eventType: event.type,
-          details: event.message,
-          duration: event.duration
+  handleNoFace() {
+    if (!this.noFaceStartTime) {
+      this.noFaceStartTime = Date.now();
+      console.log('No face detected - starting timer');
+    } else {
+      const duration = (Date.now() - this.noFaceStartTime) / 1000;
+      
+      // ✅ Trigger after 10 seconds of no face
+      if (duration > 10) {
+        this.onDetectionCallback({
+          type: 'no_face',
+          severity: 'high',
+          message: `No face detected for ${Math.round(duration)} seconds`,
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString()
         });
-
-        socket.emit('proctoring-event', {
-          sessionId,
-          event: newAlert
-        });
-      } catch (error) {
-        console.error('Failed to log event:', error);
+        this.noFaceStartTime = Date.now(); // Reset timer
       }
     }
-  }, [sessionId]);
+  }
 
-  // Test functions to simulate events
-  const simulateEvent = (type, message, severity = 'medium') => {
-    handleDetectionEvent({
-      type,
-      severity,
-      message
+  handleFacesDetected(faces) {
+    // Reset no face timer
+    this.noFaceStartTime = null;
+
+    // ✅ 2. Detect multiple faces in the frame
+    if (faces.length > 1) {
+      this.onDetectionCallback({
+        type: 'multiple_faces',
+        severity: 'high',
+        message: `${faces.length} people detected in frame`,
+        count: faces.length,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // ✅ 3. Detect if candidate is not looking at screen for >5 sec
+    faces.forEach(face => {
+      this.checkGazeDirection(face);
     });
-  };
+  }
 
-  const handleStartRecording = useCallback(() => {
-    if (webcamRef.current && webcamRef.current.stream) {
-      setIsRecording(true);
-      setRecordedChunks([]);
+  checkGazeDirection(face) {
+    if (!face.keypoints || face.keypoints.length < 3) return;
 
-      const stream = webcamRef.current.stream;
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'video/webm'
+    const rightEye = face.keypoints[0];
+    const leftEye = face.keypoints[1];
+    const noseTip = face.keypoints[2];
+
+    if (!rightEye || !leftEye || !noseTip) return;
+
+    // Calculate gaze direction
+    const rightEyeOffset = rightEye.x - noseTip.x;
+    const leftEyeOffset = leftEye.x - noseTip.x;
+    const avgOffset = (rightEyeOffset + leftEyeOffset) / 2;
+    
+    const gazeThreshold = 25; // pixels threshold for looking away
+
+    if (Math.abs(avgOffset) > gazeThreshold) {
+      if (!this.lookingAwayStartTime) {
+        this.lookingAwayStartTime = Date.now();
+      } else {
+        const duration = (Date.now() - this.lookingAwayStartTime) / 1000;
+        
+        // ✅ Trigger after 5 seconds of looking away
+        if (duration > 5) {
+          const direction = avgOffset > 0 ? 'right' : 'left';
+          
+          this.onDetectionCallback({
+            type: 'looking_away',
+            severity: 'medium',
+            message: `Looking ${direction} for ${Math.round(duration)} seconds`,
+            duration: Math.round(duration),
+            direction: direction,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } else {
+      this.lookingAwayStartTime = null;
+    }
+  }
+
+  // ✅ 4. Object Detection for unauthorized items
+  async detectObjects() {
+    if (!this.objectModel || !this.isRunning || !this.videoElement) return;
+
+    try {
+      const predictions = await this.objectModel.detect(this.videoElement);
+      
+      // ✅ Detect unauthorized objects
+      predictions.forEach(prediction => {
+        const { class: objectClass, score } = prediction;
+        
+        if (score > 0.6) {
+          let eventType = null;
+          let severity = 'high';
+          let message = '';
+
+          switch (objectClass) {
+            case 'cell phone':
+              eventType = 'phone_detected';
+              message = 'Mobile phone detected';
+              break;
+              
+            case 'book':
+              eventType = 'book_detected';
+              message = 'Book or notes detected';
+              break;
+              
+            case 'laptop':
+            case 'tv':
+            case 'monitor':
+            case 'keyboard':
+            case 'mouse':
+              eventType = 'electronic_device';
+              message = `Extra electronic device (${objectClass}) detected`;
+              break;
+              
+            case 'cup':
+            case 'bottle':
+            case 'glass':
+              eventType = 'beverage_detected';
+              severity = 'low';
+              message = `${objectClass} detected`;
+              break;
+
+            default:
+              return; // Skip other objects
+          }
+
+          // ✅ 5. Flag and log in real time
+          if (eventType) {
+            this.onDetectionCallback({
+              type: eventType,
+              severity: severity,
+              message: message,
+              object: objectClass,
+              confidence: score,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
       });
 
-      mediaRecorderRef.current.addEventListener('dataavailable', handleDataAvailable);
-      mediaRecorderRef.current.start();
+    } catch (error) {
+      console.error('Object detection error:', error);
     }
-  }, []);
+  }
 
-  const handleDataAvailable = useCallback(({ data }) => {
-    if (data.size > 0) {
-      setRecordedChunks(prev => [...prev, data]);
+  stop() {
+    this.isRunning = false;
+    
+    if (this.objectInterval) {
+      clearInterval(this.objectInterval);
     }
-  }, []);
-
-  const handleStopRecording = useCallback(() => {
-    if (mediaRecorderRef.current) {
-      setIsRecording(false);
-      mediaRecorderRef.current.stop();
+    if (this.faceDetectionInterval) {
+      clearInterval(this.faceDetectionInterval);
     }
-  }, []);
+    
+    console.log('Detection system stopped');
+  }
 
-  const handleEndSession = async () => {
-    if (isRecording) {
-      handleStopRecording();
-    }
-
-    if (faceDetectionRef.current) {
-      faceDetectionRef.current.stop();
-    }
-
-    // End session in backend
-    if (sessionId) {
-      try {
-        await endSession(sessionId);
-        alert('Session ended successfully!');
-      } catch (error) {
-        console.error('Failed to end session:', error);
-      }
-    }
-  };
-
-  const handleCameraError = () => {
-    setCameraError(true);
-    console.error('Camera error occurred');
-  };
-
-  const videoConstraints = {
-    width: 1280,
-    height: 720,
-    facingMode: "user"
-  };
-
-  return (
-    <div className="video-capture-container">
-      <div className="video-section">
-        <h2>Interview Session - {candidateName}</h2>
-        <div className="video-wrapper">
-          <div className="webcam-wrapper">
-            <Webcam
-              ref={webcamRef}
-              audio={false}
-              videoConstraints={videoConstraints}
-              onUserMedia={startDetection}
-              onUserMediaError={handleCameraError}
-              mirrored={true}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover'
-              }}
-            />
-          </div>
-          {cameraError && (
-            <div className="camera-error">
-              Camera access denied or not available. Please check your camera settings.
-            </div>
-          )}
-          <div className="video-controls">
-            {!isRecording ? (
-              <button onClick={handleStartRecording} className="record-btn">
-                Start Recording
-              </button>
-            ) : (
-              <button onClick={handleStopRecording} className="stop-btn">
-                Stop Recording
-              </button>
-            )}
-            <button onClick={handleEndSession} className="end-session-btn">
-              End Session
-            </button>
-          </div>
-          
-          <div className="test-controls">
-            <h4>Test Detection Events:</h4>
-            <button onClick={() => simulateEvent('looking_away', 'Candidate looked away from screen', 'medium')}>
-              Simulate Looking Away
-            </button>
-            <button onClick={() => simulateEvent('phone_detected', 'Mobile phone detected', 'high')}>
-              Simulate Phone Detection
-            </button>
-            <button onClick={() => simulateEvent('multiple_faces', 'Multiple faces detected', 'high')}>
-              Simulate Multiple Faces
-            </button>
-            <button onClick={() => simulateEvent('no_face', 'No face detected for 10 seconds', 'high')}>
-              Simulate No Face
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="monitoring-section">
-        <div className="stats-panel">
-          <h3>Session Statistics</h3>
-          <div className="stat-item">
-            <span className="stat-label">Focus Lost:</span>
-            <span className="stat-value">{stats.focusLostCount}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Suspicious Events:</span>
-            <span className="stat-value">{stats.suspiciousEvents}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Session ID:</span>
-            <span className="stat-value" style={{ fontSize: '0.8em' }}>
-              {sessionId || 'Not started'}
-            </span>
-          </div>
-        </div>
-
-        <div className="alerts-panel">
-          <h3>Real-time Alerts</h3>
-          <div className="alerts-list">
-            {alerts.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#666' }}>
-                Monitoring active - No alerts yet
-              </p>
-            ) : (
-              alerts.map(alert => (
-                <div key={alert.id} className={`alert alert-${alert.severity}`}>
-                  <span className="alert-time">{alert.timestamp}</span>
-                  <span className="alert-message">{alert.message}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default VideoCapture;
+  // ✅ Utility method to get detection status
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      initialized: this.initialized,
+      noFaceDuration: this.noFaceStartTime ? (Date.now() - this.noFaceStartTime) / 1000 : 0,
+      lookingAwayDuration: this.lookingAwayStartTime ? (Date.now() - this.lookingAwayStartTime) / 1000 : 0
+    };
+  }
+}             

@@ -14,6 +14,31 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${file.originalname}`);
   }
 });
+router.post('/detection-event', async (req, res) => {
+  try {
+    const { sessionId, eventType, details, duration, severity, confidence, detectedObject, timestamp } = req.body;
+    
+    const event = new Event({
+      sessionId,
+      eventType,
+      details,
+      duration,
+      severity,
+      confidence,
+      detectedObject,
+      timestamp: timestamp || new Date()
+    });
+    
+    await event.save();
+    
+    // Real-time broadcast
+    req.app.get('io').emit('detection-event', event);
+    
+    res.json({ success: true, event });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // In the log-event endpoint, after updating session counters
 router.post('/log-event', async (req, res) => {
   try {
@@ -80,35 +105,6 @@ router.post('/end-session/:sessionId', async (req, res) => {
   }
 });
 
-// Log event
-router.post('/log-event', async (req, res) => {
-  try {
-    const { sessionId, eventType, duration, details } = req.body;
-    
-    const event = new Event({
-      sessionId,
-      eventType,
-      duration,
-      details
-    });
-    
-    await event.save();
-    
-    // Update session counters
-    const session = await Session.findById(sessionId);
-    if (eventType === 'focus_lost' || eventType === 'looking_away') {
-      session.focusLostCount++;
-    } else {
-      session.suspiciousEvents++;
-    }
-    session.events.push(event._id);
-    await session.save();
-    
-    res.json({ success: true, event });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 router.post('/upload-video/:sessionId', upload.single('video'), async (req, res) => {
   try {

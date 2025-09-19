@@ -1,15 +1,18 @@
-FROM node:16-alpine
+# Backend Dockerfile should use Node 18
+FROM node:18-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
 
+# First install all dependencies (including dev) to generate proper lock file
+RUN npm install
 COPY . .
 
-# Create uploads directories
-RUN mkdir -p uploads/videos
+# Then copy the rest of the application
+COPY .env ./
+
 
 EXPOSE 5000
 
-CMD ["node", "server.js"]
+CMD ["npm", "start"]

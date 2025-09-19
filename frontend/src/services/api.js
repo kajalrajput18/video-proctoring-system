@@ -55,6 +55,10 @@ export const downloadPDFReport = async (sessionId) => {
   link.remove();
 };
 
+export const logDetectionEvent = async (eventData) => {
+  const response = await api.post('/proctor/detection-event', eventData);
+  return response.data;
+};
 export const downloadCSVReport = async (sessionId) => {
   const response = await api.get(`/report/csv/${sessionId}`, {
     responseType: 'blob'

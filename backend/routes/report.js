@@ -28,11 +28,8 @@ router.get('/pdf/:sessionId', async (req, res) => {
     
     const pdfBuffer = await generatePDFReport(session);
     
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="proctor-report-${session.candidateName}.pdf"`
-    });
-    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=report-${session._id}.pdf`);
     res.send(pdfBuffer);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -47,11 +44,8 @@ router.get('/csv/:sessionId', async (req, res) => {
     
     const csv = await generateCSVReport(session);
     
-    res.set({
-      'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="proctor-report-${session.candidateName}.csv"`
-    });
-    
+     res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=report-${session._id}.csv`);
     res.send(csv);
   } catch (error) {
     res.status(500).json({ error: error.message });
